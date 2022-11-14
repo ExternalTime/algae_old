@@ -8,6 +8,8 @@ fn main() {
     let mut args = std::env::args().skip(1);
     if let [Some(corpus), Some(saved)] = [args.next(), args.next()] {
         generate(corpus.as_ref(), saved.as_ref());
+    } else {
+        println!("please input a path to corpus and where to save its stats");
     }
 }
 
@@ -18,8 +20,21 @@ fn generate(corpus: &str, saved: &str) {
     let total = ngrams.iter().map(|(_, count)| *count).sum::<u64>() as f64;
     let encoding = MapEncoding::new(
         "etaoinshrldcumfpgwybvkxjqz,./;".chars(),
-        0usize..30, //",./;".chars().chain('a'..='z'), std::iter::empty());
-        [(0, 'd'), (1, 'v'), (2, 'o'), (3, 'r'), (4, 'a'), (5, 'k'), (6, 'b'), (7, 'e'), (8, 's'), (9, 't')].into_iter().map(|(x, y)| (y, x)),
+        0usize..30,
+        [
+            (0, 'd'),
+            (1, 'v'),
+            (2, 'o'),
+            (3, 'r'),
+            (4, 'a'),
+            (5, 'k'),
+            (6, 'b'),
+            (7, 'e'),
+            (8, 's'),
+            (9, 't'),
+        ]
+        .into_iter()
+        .map(|(x, y)| (y, x)),
     );
     let analyzer =
         encoding.weight_calculator(|ngram| ngrams.get(&ngram).copied().unwrap_or(0), weight);
@@ -30,7 +45,10 @@ fn generate(corpus: &str, saved: &str) {
     generation::hill_climb(&mut layout, 10, |l| analyzer.score(l));
     generation::exhaustive(&mut layout, 10, |l| analyzer.step_score(l));
 
-    println!("sfb distance (taxicab): {}", analyzer.score(&layout) as f64 / total);
+    println!(
+        "sfb distance (taxicab): {}",
+        analyzer.score(&layout) as f64 / total
+    );
     print_layout(encoding.decode(layout.clone()).map(|(x, y)| (y, x)));
 }
 
