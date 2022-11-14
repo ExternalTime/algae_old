@@ -1,7 +1,7 @@
 use super::{CompiledNgramAnalyzer, Encoding};
 use std::cmp::Eq;
-use std::ops::{AddAssign, Mul};
 use std::fmt::Debug;
+use std::ops::{AddAssign, Mul};
 
 #[derive(Debug)]
 pub struct MapEncoding<K, V> {
@@ -24,7 +24,13 @@ where
         let pins = keys.len();
         let keys = Encoding::new(keys, key_set);
         let values = Encoding::new(values, value_set);
-        assert_eq!(keys.len(), values.len(), "map encoding must contain same number of keys and characters - {} != {}", keys.len(), values.len());
+        assert_eq!(
+            keys.len(),
+            values.len(),
+            "map encoding must contain same number of keys and characters - {} != {}",
+            keys.len(),
+            values.len()
+        );
         Self { keys, values, pins }
     }
 

@@ -27,7 +27,11 @@ pub fn exhaustive(layout: &mut [usize], pinned: usize, step_score: impl Fn(&[usi
             }
         }
     }
-    assert_eq!(len, best_layout.len(), "exhaustive search somehow failed to find any layouts at all");
+    assert_eq!(
+        len,
+        best_layout.len(),
+        "exhaustive search somehow failed to find any layouts at all"
+    );
     for (v1, v2) in layout.iter_mut().zip(best_layout.into_iter()) {
         *v1 = v2;
     }

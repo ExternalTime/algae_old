@@ -21,10 +21,22 @@ where
             }
             duplicates
         };
-        assert!(duplicates.is_empty(), "encountered duplicates: {:?}", duplicates);
-        let invalid: Vec<T> = pins.iter().filter(|x| !value_set.contains(x)).cloned().collect();
-        assert!(invalid.is_empty(), "encountered invalid values: {:?}", invalid);
-        
+        assert!(
+            duplicates.is_empty(),
+            "encountered duplicates: {:?}",
+            duplicates
+        );
+        let invalid: Vec<T> = pins
+            .iter()
+            .filter(|x| !value_set.contains(x))
+            .cloned()
+            .collect();
+        assert!(
+            invalid.is_empty(),
+            "encountered invalid values: {:?}",
+            invalid
+        );
+
         // This way we preserve original ordering while moving pins to the start
         for v in value_set {
             if !pins.contains(&v) {
