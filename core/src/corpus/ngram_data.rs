@@ -55,7 +55,11 @@ impl<const N: usize> NgramData<N> {
         Self::default()
     }
 
-    /// Creates empty `NgramData`.
+    /// Calculates `NgramData` from supplied iterator.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if supplied iterator is shorter than `N`.
     ///
     /// # Example
     ///
