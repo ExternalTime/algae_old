@@ -3,6 +3,8 @@ use std::cmp::Eq;
 use std::fmt::Debug;
 use std::ops::{AddAssign, Mul};
 
+/// At runtimes defines layout encoding to allow more efficient analysis.
+
 #[derive(Debug)]
 pub struct MapEncoding<K, V> {
     keys: Encoding<K>,
@@ -15,6 +17,12 @@ where
     K: Clone + Eq + Debug,
     V: Clone + Eq + Debug,
 {
+    /// Creates new encoding.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if any of the arguments contains duplicates or
+    /// key and value sets don't match in length.
     pub fn new(
         key_set: impl IntoIterator<Item = K>,
         value_set: impl IntoIterator<Item = V>,
@@ -34,6 +42,7 @@ where
         Self { keys, values, pins }
     }
 
+    /// Encodes a layout.
     pub fn encode(&self, map: impl Fn(&K) -> &V) -> Vec<usize> {
         let mut vec = Vec::new();
         for key in self.keys.0.iter() {
@@ -42,17 +51,19 @@ where
         vec
     }
 
+    /// Decodes a layout.
     pub fn decode(&self, vec: Vec<usize>) -> impl Iterator<Item = (K, V)> + '_ {
         vec.into_iter()
             .enumerate()
             .map(|(k, v)| (self.keys.decode(k).clone(), self.values.decode(v).clone()))
     }
 
+    /// Returns the number of pins.
     pub fn pins(&self) -> usize {
         self.pins
     }
 
-    pub fn weight_calculator<Score, const D: usize>(
+    pub fn compile_analyzer<Score, const D: usize>(
         &self,
         wk: impl Fn([K; D]) -> Score,
         wv: impl Fn([V; D]) -> Score,
