@@ -1,23 +1,25 @@
 use std::ops::{AddAssign, Index, Mul};
 
-pub struct CompiledNgramAnalyzer<Score, const N: usize> {
+pub struct CompiledNgramAnalyzer<WK, WV, const N: usize> {
     // Sparse tensor
-    sparse: Vec<([usize; N], Score)>,
+    sparse: Vec<([usize; N], WV)>,
     // Bounds for incremental analysis
     bucket_bounds: Vec<usize>,
 
     // Tensor represented as a flat array
-    dense: Box<[Score]>,
+    dense: Box<[WK]>,
     side_len: usize,
 }
 
-impl<Score, const N: usize> CompiledNgramAnalyzer<Score, N>
+impl<Score, WK, WV, const N: usize> CompiledNgramAnalyzer<WK, WV, N>
 where
-    Score: Mul<Output = Score> + AddAssign + Default + Copy,
+    WV: Mul<WK, Output = Score> + Clone,
+    WK: Clone,
+    Score: AddAssign + Default + Clone,
 {
     pub fn new(
-        dense: Box<[Score]>,
-        sparse: Vec<([usize; N], Score)>,
+        dense: Box<[WK]>,
+        sparse: Vec<([usize; N], WV)>,
         pins: usize,
         side_len: usize,
     ) -> Self {
@@ -54,21 +56,21 @@ where
 
     fn score_inner<R>(&self, layout: &[usize], range: R) -> Score
     where
-        Vec<([usize; N], Score)>: Index<R, Output = [([usize; N], Score)]>,
+        Vec<([usize; N], WV)>: Index<R, Output = [([usize; N], WV)]>,
     {
         let mut score = Score::default();
         for (index, weight) in self.sparse[range].iter() {
-            score += self.dense_weight(index, layout) * *weight;
+            score += weight.clone() * self.dense_weight(index, layout);
         }
         score
     }
 
-    fn dense_weight(&self, index: &[usize; N], layout: &[usize]) -> Score {
+    fn dense_weight(&self, index: &[usize; N], layout: &[usize]) -> WK {
         let mut res = 0;
         for &i in index {
             res *= self.side_len;
             res += layout[i];
         }
-        self.dense[res]
+        self.dense[res].clone()
     }
 }

@@ -63,16 +63,18 @@ where
         self.pins
     }
 
-    pub fn compile_analyzer<Score, const D: usize>(
+    pub fn compile_analyzer<Score, WK, WV, const D: usize>(
         &self,
-        wk: impl Fn([K; D]) -> Score,
-        wv: impl Fn([V; D]) -> Score,
-    ) -> CompiledNgramAnalyzer<Score, D>
+        wk: impl Fn([K; D]) -> WK,
+        wv: impl Fn([V; D]) -> WV,
+    ) -> CompiledNgramAnalyzer<WK, WV, D>
     where
-        Score: Default + Mul<Output = Score> + AddAssign + Copy + Eq,
+        WK: Clone + Default,
+        WV: Mul<WK, Output = Score> + Clone + Default + Eq,
+        Score: Default + AddAssign + Clone + Ord,
     {
-        let sparse = self.keys.encode_into_sparse_tensor(wk);
-        let dense = self.values.encode_into_tensor(wv);
+        let dense = self.keys.encode_into_tensor(wk);
+        let sparse = self.values.encode_into_sparse_tensor(wv);
         CompiledNgramAnalyzer::new(dense, sparse, self.pins, self.keys.len())
     }
 }
