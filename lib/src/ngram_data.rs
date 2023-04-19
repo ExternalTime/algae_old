@@ -10,7 +10,7 @@ type Ngrams<const N: usize> = HashMap<[char; N], u64>;
 ///
 /// Typical usage:
 /// ```
-/// use algae_core::NgramData;
+/// use algae_lib::NgramData;
 ///
 /// // Load the corpus
 /// let corpus = "Quick brown fox jumps over a lazy dog";
@@ -20,7 +20,7 @@ type Ngrams<const N: usize> = HashMap<[char; N], u64>;
 /// // are expanding capital letters into a shift placeholder
 /// // and lowercase letter. Keep in mind that chosen
 /// // placeholder could occur naturally in the corpus.
-/// let trigrams = trigrams.expand(|char|
+/// let trigrams: NgramData<3> = trigrams.expand(|char|
 ///     if char.is_ascii_uppercase() {
 ///         vec!['⇧', char.to_ascii_lowercase()]
 ///     } else {
@@ -29,7 +29,7 @@ type Ngrams<const N: usize> = HashMap<[char; N], u64>;
 ///
 /// // Get raw ngrams
 /// let bigrams = trigrams.ngrams::<2>();
-/// let trigrams = trigrams.into_inner();
+/// let trigrams = trigrams.ngrams::<3>();
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(serialize = "[char; N]: Serialize"))]
@@ -47,7 +47,7 @@ impl<const N: usize> NgramData<N> {
     /// # Example
     ///
     /// ```
-    /// use algae_core::NgramData;
+    /// use algae_lib::NgramData;
     /// let corpus = NgramData::<3>::empty();
     /// ```
     pub fn empty() -> Self {
@@ -63,7 +63,7 @@ impl<const N: usize> NgramData<N> {
     /// # Example
     ///
     /// ```
-    /// use algae_core::NgramData;
+    /// use algae_lib::NgramData;
     /// let corpus = NgramData::<3>::new("Quick Fox".chars());
     /// ```
     pub fn new(iter: impl IntoIterator<Item = char>) -> Self {
@@ -79,7 +79,7 @@ impl<const N: usize> NgramData<N> {
     /// # Example
     ///
     /// ```
-    /// use algae_core::NgramData;
+    /// use algae_lib::NgramData;
     /// let mut corpus = NgramData::<3>::empty();
     /// corpus.add("Quick Fox".chars());
     /// ```
@@ -111,7 +111,7 @@ impl<const N: usize> NgramData<N> {
     /// # Example
     ///
     /// ```
-    /// use algae_core::NgramData;
+    /// use algae_lib::NgramData;
     /// let text = "Quick Fox";
     /// let trigrams = NgramData::<3>::new(text.chars());
     /// let trigrams = trigrams.expand(|char|
@@ -121,7 +121,7 @@ impl<const N: usize> NgramData<N> {
     ///         vec![char]
     ///     }
     /// );
-    /// let trigrams = trigrams.into_inner();
+    /// let trigrams = trigrams.ngrams();
     /// assert_eq!(trigrams.get(&['Q', 'u', 'i']), None);
     /// assert_eq!(trigrams.get(&['⇧', 'q', 'u']), Some(&1));
     /// assert_eq!(trigrams.get(&[' ', '⇧', 'f']), Some(&1));
@@ -157,10 +157,10 @@ impl<const N: usize> NgramData<N> {
     /// # Examples
     ///
     /// ```
-    /// use algae_core::NgramData;
+    /// use algae_lib::NgramData;
     /// let corpus = "Quick brown fox";
     /// let trigrams = NgramData::<3>::new(corpus.chars());
-    /// let bigrams = NgramData::<2>::new(corpus.chars()).into_inner();
+    /// let bigrams = NgramData::<2>::new(corpus.chars()).ngrams();
     /// let contracted = trigrams.ngrams::<2>();
     /// assert_eq!(bigrams, contracted);
     /// ```
@@ -202,15 +202,15 @@ mod tests {
         let expected: Ngrams<3> = [(['A', 'a', 'a'], 1), (['a', 'a', 'a'], 2)]
             .into_iter()
             .collect();
-        let trigrams = NgramData::new(text.chars());
-        let trigrams = trigrams.into_inner();
+        let trigrams: NgramData<3> = NgramData::new(text.chars());
+        let trigrams = trigrams.ngrams::<3>();
         assert_eq!(trigrams, expected);
     }
 
     #[test]
     pub fn shorter_ngrams() {
         let text = "Quick fox";
-        let expected: Ngrams<2> = NgramData::new(text.chars()).into_inner();
+        let expected: Ngrams<2> = NgramData::<2>::new(text.chars()).ngrams();
         let trigrams = NgramData::<3>::new(text.chars());
         let bigrams = trigrams.ngrams();
         assert_eq!(bigrams, expected);
@@ -228,9 +228,7 @@ mod tests {
     pub fn simple_expansion() {
         let text = "Quick fox";
         let expansion = |char| vec!['.', char];
-        let ngrams = NgramData::<2>::new(text.chars())
-            .expand(expansion)
-            .into_inner();
+        let ngrams = NgramData::<2>::new(text.chars()).expand(expansion).ngrams();
         let expected = NgramData::<3>::new(text.chars().flat_map(expansion)).ngrams::<2>();
         assert_eq!(ngrams, expected);
     }
