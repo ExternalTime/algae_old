@@ -13,4 +13,4 @@ For now "cli" only serves as an example on how to use the library
 and has more things hard-coded than not.
 
 \* For now generation uses only hill climbing. This will be
-imporoved soon.
+improved soon.
