@@ -1,4 +1,4 @@
-use super::Windows;
+use super::{expand_first, expand_full};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -35,11 +35,10 @@ type Ngrams<const N: usize> = HashMap<[char; N], u64>;
 #[serde(bound(serialize = "[char; N]: Serialize"))]
 #[serde(bound(deserialize = "[char; N]: Deserialize<'de>"))]
 pub struct NgramData<const N: usize> {
-    // Remembers which ngram is first (it's contained in both maps).
-    // Helps accurately calculate shorter ngrams. Especially
-    // important when dealing with many short texts.
-    heads: Ngrams<N>,
+    // Last ngrams (tails) are stored separately from the rest to allow
+    // us to accurately calculate expansion results and shorter ngrams.
     ngrams: Ngrams<N>,
+    tails: Ngrams<N>,
 }
 
 impl<const N: usize> NgramData<N> {
@@ -71,7 +70,7 @@ impl<const N: usize> NgramData<N> {
         Self::from_iter(iter)
     }
 
-    /// Adds occurences from supplied text onto self.
+    /// Counts ngrams in supplied text.
     ///
     /// # Panics
     ///
@@ -85,17 +84,22 @@ impl<const N: usize> NgramData<N> {
     /// corpus.add("Quick Fox".chars());
     /// ```
     pub fn add(&mut self, iter: impl IntoIterator<Item = char>) {
-        let iter = iter.into_iter();
-        let mut ngrams = Windows::new(iter);
-        let head = match ngrams.next() {
-            Some(head) => head,
-            None => todo!("Should decide what should happen here. Panicking works for now"),
-        };
-        *self.ngrams.entry(head).or_insert(0) += 1;
-        *self.heads.entry(head).or_insert(0) += 1;
-        for ngram in ngrams {
-            *self.ngrams.entry(ngram).or_insert(0) += 1;
+        let mut iter = iter.into_iter();
+        let mut vec = Vec::with_capacity(N);
+        for _ in 0..N {
+            match iter.next() {
+                Some(char) => vec.push(char),
+                // TODO: Decide on how this situation should be handled.
+                None => unimplemented!("tried to count ngrams in text shorter than N"),
+            }
         }
+        let mut ngram: [char; N] = vec.try_into().unwrap();
+        for char in iter {
+            *self.ngrams.entry(ngram).or_insert(0) += 1;
+            ngram.rotate_left(1);
+            ngram[N - 1] = char;
+        }
+        *self.tails.entry(ngram).or_insert(0) += 1;
     }
 
     /// Creates `NgramData` from self where characters get expanded by `expansion`.
@@ -122,57 +126,30 @@ impl<const N: usize> NgramData<N> {
     /// assert_eq!(trigrams.get(&['⇧', 'q', 'u']), Some(&1));
     /// assert_eq!(trigrams.get(&[' ', '⇧', 'f']), Some(&1));
     /// ```
-    pub fn expand(&self, expansion: impl Fn(char) -> Vec<char>) -> Self {
-        let heads = self.expand_heads(&expansion);
-        let ngrams = self.expand_ngrams(&expansion);
-        Self { heads, ngrams }
-    }
-
-    fn expand_heads(&self, expansion: &impl Fn(char) -> Vec<char>) -> Ngrams<N> {
-        let mut heads = Ngrams::new();
-        for (&head, &occurences) in self.heads.iter() {
-            let expanded = head.into_iter().flat_map(expansion);
-            let mut windows = Windows::new(expanded);
-            let head = windows
-                .next()
-                .expect("expansion of each character should be at least 1-character long");
-            *heads.entry(head).or_insert(0) += occurences;
-        }
-        heads
-    }
-
-    fn expand_ngrams(&self, expansion: &impl Fn(char) -> Vec<char>) -> Ngrams<N> {
+    pub fn expand<F, Iter>(&self, expand: F) -> Self
+    where
+        F: Fn(char) -> Iter,
+        Iter: IntoIterator<Item = char>,
+    {
+        let expand = &|char: &char| expand(*char);
+        let mut tails = Ngrams::new();
         let mut ngrams = Ngrams::new();
-        for (&ngram, &occurences) in self.ngrams.iter() {
-            let to_add = expansion(ngram[0]).len();
-            let expanded = ngram.into_iter().flat_map(expansion);
-            let mut windows = Windows::new(expanded);
-            for _ in 0..to_add {
-                let ngram = windows
-                    .next()
-                    .expect("expansion of each character should be at least 1-character long");
-                *ngrams.entry(ngram).or_insert(0) += occurences;
+        for (tail, &count) in &self.tails {
+            let mut expanded = expand_full(tail, expand).into_iter().rev();
+            *tails.entry(expanded.next().unwrap()).or_insert(0) += count;
+            for ngram in expanded {
+                *ngrams.entry(ngram).or_insert(0) += count;
             }
         }
-        ngrams
+        for (ngram, &count) in &self.ngrams {
+            for ngram in expand_first(ngram, expand) {
+                *ngrams.entry(ngram).or_insert(0) += count;
+            }
+        }
+        Self { ngrams, tails }
     }
 
-    /// Cheaply convert self into engrams.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use algae_core::NgramData;
-    /// let trigrams = NgramData::<3>::new("Quick Fox".chars());
-    /// let trigrams = trigrams.into_inner();
-    /// assert_eq!(trigrams.get(&['Q', 'u', 'i']), Some(&1));
-    /// assert_eq!(trigrams.get(&['a', 'b', 'c']), None);
-    /// ```
-    pub fn into_inner(self) -> Ngrams<N> {
-        self.ngrams
-    }
-
-    /// Calculates ngrams of length K
+    /// Calculates the number of ngrams of length `K`
     ///
     /// # Panics
     /// This function will panic if N < K.
@@ -181,28 +158,29 @@ impl<const N: usize> NgramData<N> {
     ///
     /// ```
     /// use algae_core::NgramData;
-    /// let trigrams = NgramData::<3>::new("Quick Fox".chars());
-    /// let bigrams = trigrams.ngrams::<2>();
-    /// assert_eq!(bigrams.get(&['Q', 'u']), Some(&1));
+    /// let corpus = "Quick brown fox";
+    /// let trigrams = NgramData::<3>::new(corpus.chars());
+    /// let bigrams = NgramData::<2>::new(corpus.chars()).into_inner();
+    /// let contracted = trigrams.ngrams::<2>();
+    /// assert_eq!(bigrams, contracted);
     /// ```
     pub fn ngrams<const K: usize>(&self) -> Ngrams<K> {
         assert!(K <= N);
-        let mut ngrams = Ngrams::new();
-        // To get an accurate count we only get last ngram from `ngrams`
-        // and all except last from `heads`.
-        for (head, occurences) in self.heads.iter() {
-            for i in 0..(N - K) {
-                *ngrams
-                    .entry(head[i..][..K].try_into().unwrap())
-                    .or_insert(0) += occurences;
-            }
-        }
-        for (ngram, occurences) in self.ngrams.iter() {
-            *ngrams
-                .entry(ngram[(N - K)..].try_into().unwrap())
-                .or_insert(0) += occurences;
-        }
-        ngrams
+        self.tails
+            .iter()
+            .flat_map(|(tail, count)| {
+                tail.windows(K)
+                    .map(move |window| (window.try_into().unwrap(), count))
+            })
+            .chain(
+                self.ngrams
+                    .iter()
+                    .map(|(ngram, count)| (ngram[..K].try_into().unwrap(), count)),
+            )
+            .fold(Ngrams::new(), |mut ngrams, (ngram, &count)| {
+                *ngrams.entry(ngram).or_insert(0) += count;
+                ngrams
+            })
     }
 }
 
@@ -231,8 +209,8 @@ mod tests {
 
     #[test]
     pub fn shorter_ngrams() {
-        let text = "Aaaaa";
-        let expected: Ngrams<2> = [(['A', 'a'], 1), (['a', 'a'], 3)].into_iter().collect();
+        let text = "Quick fox";
+        let expected: Ngrams<2> = NgramData::new(text.chars()).into_inner();
         let trigrams = NgramData::<3>::new(text.chars());
         let bigrams = trigrams.ngrams();
         assert_eq!(bigrams, expected);
@@ -244,5 +222,16 @@ mod tests {
         let before = NgramData::<3>::new(text.chars());
         let after = before.expand(|char| vec![char]);
         assert_eq!(after, before);
+    }
+
+    #[test]
+    pub fn simple_expansion() {
+        let text = "Quick fox";
+        let expansion = |char| vec!['.', char];
+        let ngrams = NgramData::<2>::new(text.chars())
+            .expand(expansion)
+            .into_inner();
+        let expected = NgramData::<3>::new(text.chars().flat_map(expansion)).ngrams::<2>();
+        assert_eq!(ngrams, expected);
     }
 }

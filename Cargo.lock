@@ -8,14 +8,6 @@ version = "0.1.0"
 dependencies = [
  "algae_lib",
  "bincode",
- "fastrand",
- "serde",
-]
-
-[[package]]
-name = "algae_core"
-version = "0.1.0"
-dependencies = [
  "serde",
 ]
 
@@ -23,8 +15,8 @@ dependencies = [
 name = "algae_lib"
 version = "0.1.0"
 dependencies = [
- "algae_core",
  "fastrand",
+ "serde",
 ]
 
 [[package]]

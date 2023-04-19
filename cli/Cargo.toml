@@ -5,6 +5,5 @@ edition = "2021"
 
 [dependencies]
 algae_lib.path = "../lib"
-fastrand = "1.8.0"
 serde = "1.0.141"
 bincode = "1.3.3"

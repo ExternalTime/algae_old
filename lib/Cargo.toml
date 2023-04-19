@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-algae_core.path = "../core"
+serde = { version = "1.0.141", features = ["derive"] }
 fastrand = "1.8.0"
