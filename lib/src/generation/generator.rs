@@ -54,15 +54,16 @@ where
     fn actual_generation(&self, mut layout: Vec<usize>, pinned: &[bool]) -> Vec<usize> {
         let mut buffer = vec![0; self.corpus_set.len()];
         let mut best_score = self.full_analysis(&layout, &mut buffer);
+        let to_shuffle: Vec<_> = pinned
+            .iter()
+            .enumerate()
+            .filter(|(_, &pinned)| !pinned)
+            .map(|(i, _)| i)
+            .collect();
         'outer: loop {
-            for i in 0..layout.len() {
-                if pinned[i] {
-                    continue;
-                }
-                for j in (i + 1)..layout.len() {
-                    if pinned[j] {
-                        continue;
-                    }
+            let mut iter = to_shuffle.iter().copied();
+            while let Some(i) = iter.next() {
+                for j in iter.clone() {
                     layout.swap(i, j);
                     let score = self.full_analysis(&layout, &mut buffer);
                     if score < best_score {
