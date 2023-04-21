@@ -5,20 +5,20 @@ impl<T> Encoding<T>
 where
     T: Clone + Eq,
 {
-    pub fn new(value_set: impl IntoIterator<Item = T>) -> Result<Self, Vec<T>> {
-        let mut values = Vec::new();
-        let mut duplicates = Vec::new();
-        for v in value_set {
-            if !values.contains(&v) {
-                values.push(v);
-            } else if !duplicates.contains(&v) {
-                duplicates.push(v);
+    pub fn new(mut values: Vec<T>) -> Result<Self, Vec<T>> {
+        let mut duplicates = 0;
+        for i in 1..values.len() {
+            if values[duplicates..i].contains(&values[i]) {
+                values.swap(duplicates, i);
+                duplicates += 1;
             }
         }
-        if !duplicates.is_empty() {
-            Err(duplicates)
-        } else {
-            Ok(Self(values.into_boxed_slice()))
+        match duplicates {
+            0 => Ok(Self(values.into_boxed_slice())),
+            _ => {
+                values.truncate(duplicates);
+                Err(values)
+            }
         }
     }
 

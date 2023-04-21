@@ -8,27 +8,19 @@ pub struct LayoutEncoding<K> {
     pub chars: Encoding<char>,
 }
 
-impl<K: Clone + Eq + Debug + Display + 'static> LayoutEncoding<K> {
-    pub fn new(
-        keys: impl IntoIterator<Item = K>,
-        chars: impl IntoIterator<Item = char>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let (keys, chars) = match (Encoding::new(keys), Encoding::new(chars)) {
-            (Ok(keys), Ok(chars)) => (keys, chars),
-            (keys, chars) => {
-                return Err(Box::new(InvalidLayoutEncoding::Duplicates((
-                    keys.err().unwrap_or(Vec::new()),
-                    chars.err().unwrap_or(Vec::new()),
-                ))))
-            }
+impl<K: Clone + Eq> LayoutEncoding<K> {
+    pub fn new(keys: Vec<K>, chars: Vec<char>) -> Result<Self, InvalidLayoutEncoding<K>> {
+        let counts = match keys.len() == chars.len() {
+            true => None,
+            false => Some([keys.len(), chars.len()]),
         };
-        if keys.len() != chars.len() {
-            Err(Box::new(InvalidLayoutEncoding::<K>::DifferentCounts([
-                keys.len(),
-                chars.len(),
-            ])))
-        } else {
-            Ok(Self { keys, chars })
+        match (Encoding::new(keys), Encoding::new(chars), counts) {
+            (Ok(keys), Ok(chars), None) => Ok(Self { keys, chars }),
+            (keys, chars, different_counts) => Err(InvalidLayoutEncoding {
+                duplicate_keys: keys.err().unwrap_or(Vec::new()),
+                duplicate_chars: chars.err().unwrap_or(Vec::new()),
+                different_counts,
+            }),
         }
     }
 
@@ -43,10 +35,11 @@ impl<K: Clone + Eq + Debug + Display + 'static> LayoutEncoding<K> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum InvalidLayoutEncoding<K> {
-    Duplicates((Vec<K>, Vec<char>)),
-    DifferentCounts([usize; 2]),
+#[derive(Clone, Debug)]
+pub struct InvalidLayoutEncoding<K> {
+    duplicate_keys: Vec<K>,
+    duplicate_chars: Vec<char>,
+    different_counts: Option<[usize; 2]>,
 }
 
 impl<K: Display> Display for InvalidLayoutEncoding<K> {
@@ -66,18 +59,12 @@ impl<K: Display> Display for InvalidLayoutEncoding<K> {
             }
             Ok(())
         }
-        use InvalidLayoutEncoding::*;
         writeln!(f, "Invalid layout encoding.")?;
-        match self {
-            Duplicates((v1, v2)) => {
-                print_duplicates(f, v1, "key")?;
-                print_duplicates(f, v2, "char")?;
-            }
-            DifferentCounts([l1, l2]) => writeln!(
-                f,
-                "The numbers of keys ({l1}) and characters ({l2}) are different."
-            )?,
+        if let Some([l1, l2]) = self.different_counts {
+            writeln!(f, "Number of keys ({l1}) and chars ({l2}) are different!")?;
         }
+        print_duplicates(f, &self.duplicate_keys, "key")?;
+        print_duplicates(f, &self.duplicate_chars, "char")?;
         Ok(())
     }
 }

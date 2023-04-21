@@ -26,8 +26,8 @@ fn generate(corpus: &str, saved: &str) {
     .unwrap();
     println!("Generating layout optimized for sfb distance (taxicab).");
     let pins = [];
-    let result: Layout = generator.generate(pins).unwrap();
-    println!("{result}");
+    let layout: Layout = generator.generate(pins).unwrap();
+    println!("{layout}");
 }
 
 fn sfb_distance([Key([y1, x1]), Key([y2, x2])]: [Key; 2]) -> u64 {

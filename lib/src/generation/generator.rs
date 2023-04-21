@@ -1,4 +1,4 @@
-use super::{CorpusSet, LayoutEncoding, Metric};
+use super::{CorpusSet, InvalidLayoutEncoding, LayoutEncoding, Metric};
 
 pub struct Generator<K, const N: usize> {
     encoding: LayoutEncoding<K>,
@@ -8,18 +8,19 @@ pub struct Generator<K, const N: usize> {
 
 impl<K, const N: usize> Generator<K, N>
 where
-    K: Clone + std::fmt::Debug + std::fmt::Display + Eq + 'static,
+    K: Clone + Eq,
 {
     pub fn new<I>(
         keyset: impl IntoIterator<Item = K>,
         charset: impl IntoIterator<Item = char>,
         corpora: impl IntoIterator<Item = I>,
         metric: impl Fn([K; N]) -> u64,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    ) -> Result<Self, InvalidLayoutEncoding<K>>
     where
         I: IntoIterator<Item = ([char; N], u64)>,
     {
-        let encoding = LayoutEncoding::new(keyset, charset)?;
+        let encoding =
+            LayoutEncoding::new(keyset.into_iter().collect(), charset.into_iter().collect())?;
         let corpora = corpora.into_iter().map(|corpus| {
             corpus.into_iter().flat_map(|(ngram, count)| {
                 encoding
@@ -51,17 +52,14 @@ where
         self.corpus_set.aggregate_scores(buffer)
     }
 
-    fn actual_generation(&self, mut layout: Vec<usize>, pinned: &[bool]) -> Vec<usize> {
+    fn actual_generation<I>(&self, mut layout: Vec<usize>, not_pinned: I) -> Vec<usize>
+    where
+        I: Iterator<Item = usize> + Clone,
+    {
         let mut buffer = vec![0; self.corpus_set.len()];
         let mut best_score = self.full_analysis(&layout, &mut buffer);
-        let to_shuffle: Vec<_> = pinned
-            .iter()
-            .enumerate()
-            .filter(|(_, &pinned)| !pinned)
-            .map(|(i, _)| i)
-            .collect();
         'outer: loop {
-            let mut iter = to_shuffle.iter().copied();
+            let mut iter = not_pinned.clone();
             while let Some(i) = iter.next() {
                 for j in iter.clone() {
                     layout.swap(i, j);
@@ -78,32 +76,70 @@ where
         layout
     }
 
-    pub fn generate<L>(
-        &self,
-        pins: impl IntoIterator<Item = (K, char)>,
-    ) -> Result<L, Box<dyn std::error::Error>>
+    pub fn generate<L>(&self, pins: impl IntoIterator<Item = (K, char)>) -> Result<L, InvalidPin<K>>
     where
         L: FromIterator<(K, char)>,
     {
-        let mut layout: Vec<_> = (0..self.encoding.len()).collect();
-        let mut pinned = vec![false; self.encoding.len()];
+        let len = self.encoding.len();
+        let mut layout: Vec<_> = (0..len).collect();
+        let mut pinned = vec![false; len];
         for (key, char) in pins {
-            let (key, position) = (
-                self.encoding.keys.encode(&key).unwrap(),
-                self.encoding.chars.encode(&char).unwrap(),
+            let (k, c) = (
+                self.encoding
+                    .keys
+                    .encode(&key)
+                    .ok_or(InvalidPin::InvalidKey(key.clone()))?,
+                self.encoding
+                    .chars
+                    .encode(&char)
+                    .ok_or(InvalidPin::InvalidChar(char))?,
             );
             let i = layout
                 .iter()
                 .enumerate()
-                .find(|(_, x)| **x == key)
+                .find(|(_, x)| **x == k)
                 .map(|(i, _)| i)
                 .unwrap();
-            assert!(!pinned[i] && !pinned[position]);
-            layout.swap(i, position);
-            pinned[position] = true;
+            if pinned[i] {
+                return Err(InvalidPin::DuplicateKey(key));
+            }
+            if pinned[c] {
+                return Err(InvalidPin::DuplicateChar(char));
+            }
+            layout.swap(i, c);
+            pinned[c] = true;
         }
-        //fastrand::shuffle(&mut layout);
-        let layout = self.actual_generation(layout, &pinned);
+        let pins: Vec<_> = pinned
+            .into_iter()
+            .enumerate()
+            .filter(|(_, pinned)| *pinned)
+            .map(|(i, _)| i)
+            .collect();
+        let layout = match &*pins {
+            [] => self.actual_generation(layout, 0..self.encoding.len()),
+            pins => self.actual_generation(layout, pins.iter().copied()),
+        };
         Ok(self.encoding.decode(layout).collect())
+    }
+}
+
+#[derive(Debug)]
+pub enum InvalidPin<K> {
+    InvalidKey(K),
+    DuplicateKey(K),
+    InvalidChar(char),
+    DuplicateChar(char),
+}
+
+use std::fmt::{self, Display, Formatter};
+impl<T: Display> Display for InvalidPin<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use InvalidPin::*;
+        match self {
+            InvalidKey(key) => write!(f, "invalid key ({key})"),
+            DuplicateKey(key) => write!(f, "duplicate key ({key})"),
+            InvalidChar(char) => write!(f, "invalid char ({char})"),
+            DuplicateChar(char) => write!(f, "duplicate char ({char})"),
+        }
     }
 }
